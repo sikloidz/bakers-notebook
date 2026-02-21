@@ -55,36 +55,54 @@ export function RecipeForm() {
     .reduce((sum, r) => sum + r.weight, 0);
   const hasFlour = totalFlour > 0;
 
-  function recalculate(updatedRows: FormRow[]): FormRow[] {
+  function recalculate(updatedRows: FormRow[], editedIndex?: number): FormRow[] {
     const tf = updatedRows
       .filter((r) => r.ingredientId && flourMap.get(r.ingredientId))
       .reduce((sum, r) => sum + r.weight, 0);
 
     if (tf <= 0) return updatedRows;
 
-    return updatedRows.map((r) => {
+    return updatedRows.map((r, i) => {
       if (!r.ingredientId) return r;
 
       const isFlour = flourMap.get(r.ingredientId) ?? false;
 
-      if (isFlour || r.inputMode === "weight") {
+      if (isFlour) {
         return {
           ...r,
           percentage: Math.round((r.weight / tf) * 100 * 10) / 10,
         };
-      } else {
+      }
+
+      // The edited non-flour row: derive percentage from the weight the user just typed
+      if (i === editedIndex && r.inputMode === "weight") {
+        return {
+          ...r,
+          percentage: Math.round((r.weight / tf) * 100 * 10) / 10,
+        };
+      }
+
+      // All other non-flour rows: preserve percentage, derive weight
+      if (r.percentage > 0) {
         return {
           ...r,
           weight: Math.round((r.percentage / 100) * tf),
         };
       }
+
+      // Fallback (no percentage yet): derive percentage from weight
+      return {
+        ...r,
+        percentage: Math.round((r.weight / tf) * 100 * 10) / 10,
+      };
     });
   }
 
   function handleIngredientChange(index: number, ingredientId: string) {
     setRows((prev) =>
       recalculate(
-        prev.map((r, i) => (i === index ? { ...r, ingredientId } : r))
+        prev.map((r, i) => (i === index ? { ...r, ingredientId } : r)),
+        index
       )
     );
   }
@@ -94,7 +112,8 @@ export function RecipeForm() {
       recalculate(
         prev.map((r, i) =>
           i === index ? { ...r, weight, inputMode: "weight" as const } : r
-        )
+        ),
+        index
       )
     );
   }
@@ -106,7 +125,8 @@ export function RecipeForm() {
           i === index
             ? { ...r, percentage, inputMode: "percentage" as const }
             : r
-        )
+        ),
+        index
       )
     );
   }
