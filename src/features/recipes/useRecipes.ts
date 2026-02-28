@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { generateId } from "@/lib/id";
-import type { Recipe, RecipeIngredient } from "@/types";
+import type { Recipe, RecipeIngredient, RecipeStage } from "@/types";
 import { STORAGE_KEYS } from "@/types";
 
 export function useRecipes() {
@@ -11,13 +11,19 @@ export function useRecipes() {
   );
 
   const addRecipe = useCallback(
-    (name: string, description: string, ingredients: RecipeIngredient[]) => {
+    (
+      name: string,
+      description: string,
+      ingredients: RecipeIngredient[],
+      stages?: RecipeStage[]
+    ) => {
       const now = new Date().toISOString();
       const recipe: Recipe = {
         id: generateId(),
         name,
         description,
         ingredients,
+        stages: stages && stages.length > 0 ? stages : undefined,
         createdAt: now,
         updatedAt: now,
       };
@@ -32,12 +38,20 @@ export function useRecipes() {
       id: string,
       name: string,
       description: string,
-      ingredients: RecipeIngredient[]
+      ingredients: RecipeIngredient[],
+      stages?: RecipeStage[]
     ) => {
       setRecipes((prev) =>
         prev.map((r) =>
           r.id === id
-            ? { ...r, name, description, ingredients, updatedAt: new Date().toISOString() }
+            ? {
+                ...r,
+                name,
+                description,
+                ingredients,
+                stages: stages && stages.length > 0 ? stages : undefined,
+                updatedAt: new Date().toISOString(),
+              }
             : r
         )
       );

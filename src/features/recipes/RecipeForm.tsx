@@ -4,10 +4,13 @@ import { Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/Button";
 import { Input } from "@/components/Input";
+import { Toggle } from "@/components/Toggle";
 import { useIngredients } from "@/features/ingredients/useIngredients";
 import { useRecipes } from "./useRecipes";
 import { RecipeIngredientRow } from "./RecipeIngredientRow";
-import type { RecipeIngredient } from "@/types";
+import { StageList } from "./StageList";
+import type { RecipeIngredient, RecipeStage } from "@/types";
+import type { FormStage, FormStageIngredient } from "./stageFormTypes";
 
 interface FormRow {
   ingredientId: string;
@@ -26,6 +29,8 @@ export function RecipeForm() {
   const isEditing = Boolean(existing);
 
   const flourMap = new Map(allIngredients.map((i) => [i.id, i.isFlour]));
+
+  // ── Overall formula state ───────────────────────────────────────────────
 
   const [name, setName] = useState(existing?.name ?? "");
   const [description, setDescription] = useState(existing?.description ?? "");
@@ -46,7 +51,12 @@ export function RecipeForm() {
       }));
     }
     return [
-      { ingredientId: "", weight: 0, percentage: 0, inputMode: "weight" as const },
+      {
+        ingredientId: "",
+        weight: 0,
+        percentage: 0,
+        inputMode: "weight" as const,
+      },
     ];
   });
 
@@ -54,6 +64,62 @@ export function RecipeForm() {
     .filter((r) => r.ingredientId && flourMap.get(r.ingredientId))
     .reduce((sum, r) => sum + r.weight, 0);
   const hasFlour = totalFlour > 0;
+
+  // ── Multi-stage state ───────────────────────────────────────────────────
+
+  const [multiStage, setMultiStage] = useState(
+    !!(existing?.stages && existing.stages.length > 0)
+  );
+
+  const [stages, setStages] = useState<FormStage[]>(() => {
+    if (!existing?.stages) return [];
+    const formulaFlourTotal = existing.ingredients
+      .filter((ri) => flourMap.get(ri.ingredientId))
+      .reduce((sum, ri) => sum + ri.weight, 0);
+
+    return existing.stages.map((s) => {
+      const stageFlour = s.ingredients
+        .filter((si) => flourMap.get(si.ingredientId))
+        .reduce((sum, si) => sum + si.weight, 0);
+
+      const formIngredients: FormStageIngredient[] = s.ingredients.map(
+        (si) => {
+          const isFlour = flourMap.get(si.ingredientId) ?? false;
+          const base = isFlour ? formulaFlourTotal : stageFlour;
+          return {
+            ingredientId: si.ingredientId,
+            weight: si.weight,
+            percentage: base > 0 ? (si.weight / base) * 100 : 0,
+            fromFormula: si.fromFormula,
+            inputMode: "weight" as const,
+          };
+        }
+      );
+      return {
+        id: s.id,
+        name: s.name,
+        notes: s.notes ?? "",
+        percentageMode: s.percentageMode,
+        ingredients: formIngredients,
+      };
+    });
+  });
+
+  function handleToggleMultiStage(enabled: boolean) {
+    if (!enabled && stages.length > 0) {
+      if (
+        !window.confirm(
+          "Discard stage breakdown? The overall formula will be preserved."
+        )
+      ) {
+        return;
+      }
+      setStages([]);
+    }
+    setMultiStage(enabled);
+  }
+
+  // ── Formula recalculation ───────────────────────────────────────────────
 
   function recalculate(updatedRows: FormRow[], editedIndex?: number): FormRow[] {
     const tf = updatedRows
@@ -74,7 +140,6 @@ export function RecipeForm() {
         };
       }
 
-      // The edited non-flour row: derive percentage from the weight the user just typed
       if (i === editedIndex && r.inputMode === "weight") {
         return {
           ...r,
@@ -82,7 +147,6 @@ export function RecipeForm() {
         };
       }
 
-      // All other non-flour rows: preserve percentage, derive weight
       if (r.percentage > 0) {
         return {
           ...r,
@@ -90,7 +154,6 @@ export function RecipeForm() {
         };
       }
 
-      // Fallback (no percentage yet): derive percentage from weight
       return {
         ...r,
         percentage: Math.round((r.weight / tf) * 100 * 10) / 10,
@@ -134,13 +197,20 @@ export function RecipeForm() {
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { ingredientId: "", weight: 0, percentage: 0, inputMode: "weight" as const },
+      {
+        ingredientId: "",
+        weight: 0,
+        percentage: 0,
+        inputMode: "weight" as const,
+      },
     ]);
   }
 
   function removeRow(index: number) {
     setRows((prev) => recalculate(prev.filter((_, i) => i !== index)));
   }
+
+  // ── Submit ──────────────────────────────────────────────────────────────
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -157,20 +227,70 @@ export function RecipeForm() {
 
     if (validRows.length === 0) return;
 
+    const validStages: RecipeStage[] = multiStage
+      ? stages
+          .filter(
+            (s) =>
+              s.name.trim() ||
+              s.notes.trim() ||
+              s.ingredients.some((si) => si.weight > 0)
+          )
+          .map((s) => ({
+            id: s.id,
+            name: s.name.trim(),
+            notes: s.notes.trim() || undefined,
+            percentageMode: s.percentageMode,
+            ingredients: s.ingredients
+              .filter((si) => si.ingredientId && si.weight > 0)
+              .map((si) => ({
+                ingredientId: si.ingredientId,
+                weight: si.weight,
+                fromFormula: si.fromFormula,
+              })),
+          }))
+      : [];
+
     if (isEditing && id) {
-      updateRecipe(id, trimmedName, description.trim(), validRows);
+      updateRecipe(id, trimmedName, description.trim(), validRows, validStages);
       navigate(`/recipes/${id}`);
     } else {
-      const recipe = addRecipe(trimmedName, description.trim(), validRows);
+      const recipe = addRecipe(
+        trimmedName,
+        description.trim(),
+        validRows,
+        validStages
+      );
       navigate(`/recipes/${recipe.id}`);
     }
   }
+
+  // ── Derived context for StageList ───────────────────────────────────────
+
+  const formulaIngredientIds = new Set(
+    rows.filter((r) => r.ingredientId).map((r) => r.ingredientId)
+  );
+  const formulaWeights = new Map(
+    rows.filter((r) => r.ingredientId).map((r) => [r.ingredientId, r.weight])
+  );
+  const formulaSummary = rows
+    .filter((r) => r.ingredientId && r.weight > 0)
+    .map((r) => {
+      const ing = allIngredients.find((i) => i.id === r.ingredientId);
+      return {
+        ingredientId: r.ingredientId,
+        name: ing?.name ?? "Unknown",
+        weight: r.weight,
+      };
+    });
+
+  // ── Render ──────────────────────────────────────────────────────────────
 
   return (
     <div>
       <PageHeader title={isEditing ? "Edit Recipe" : "New Recipe"} />
 
       <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Name + Description */}
         <div className="rounded-lg border border-wheat bg-white p-4 space-y-4">
           <Input
             id="recipe-name"
@@ -197,10 +317,11 @@ export function RecipeForm() {
           </div>
         </div>
 
+        {/* Overall Formula */}
         <div className="rounded-lg border border-wheat bg-white p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="font-serif text-lg font-semibold text-brown">
-              Ingredients
+              Overall Formula
             </h2>
             <Button type="button" variant="secondary" size="sm" onClick={addRow}>
               <Plus size={14} />
@@ -254,6 +375,39 @@ export function RecipeForm() {
                 </p>
               )}
             </div>
+          )}
+        </div>
+
+        {/* Multi-stage section */}
+        <div className="rounded-lg border border-wheat bg-white p-4 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-serif text-lg font-semibold text-brown">
+                Stage Breakdown
+              </h2>
+              <p className="text-xs text-brown-light mt-0.5">
+                Split the formula across pre-ferments and build stages (levain,
+                poolish, autolyse, multi-build, etc).
+              </p>
+            </div>
+            <Toggle
+              id="multi-stage-toggle"
+              label=""
+              checked={multiStage}
+              onChange={handleToggleMultiStage}
+            />
+          </div>
+
+          {multiStage && (
+            <StageList
+              stages={stages}
+              allIngredients={allIngredients}
+              formulaIngredientIds={formulaIngredientIds}
+              formulaWeights={formulaWeights}
+              formulaFlourTotal={totalFlour}
+              formulaSummary={formulaSummary}
+              onChange={setStages}
+            />
           )}
         </div>
 

@@ -10,22 +10,28 @@ export interface RecipeIngredient {
   percentage?: number; // baker's percentage (computed)
 }
 
+export interface StageIngredient {
+  ingredientId: string;
+  weight: number; // grams allocated to this stage
+  fromFormula: boolean; // false = extra ingredient not in the overall formula (e.g. starter)
+}
+
+export interface RecipeStage {
+  id: string;
+  name: string;
+  notes?: string;
+  percentageMode: boolean; // true = stage was authored using stage-relative % entry
+  ingredients: StageIngredient[];
+}
+
 export interface Recipe {
   id: string;
   name: string;
   description: string;
   ingredients: RecipeIngredient[];
+  stages?: RecipeStage[]; // absent/empty = single-stage recipe
   createdAt: string;
   updatedAt: string;
-}
-
-export interface Scaling {
-  id: string;
-  recipeId: string;
-  recipeName: string;
-  desiredWeight: number;
-  scaledIngredients: ScaledIngredient[];
-  createdAt: string;
 }
 
 export interface ScaledIngredient {
@@ -35,6 +41,29 @@ export interface ScaledIngredient {
   scaledWeight: number;
   percentage: number;
   isFlour: boolean;
+}
+
+export interface ScaledStageIngredient {
+  ingredientId: string;
+  ingredientName: string;
+  scaledWeight: number;
+  fromFormula: boolean;
+}
+
+export interface ScaledStage {
+  stageId: string;
+  stageName: string;
+  ingredients: ScaledStageIngredient[];
+}
+
+export interface Scaling {
+  id: string;
+  recipeId: string;
+  recipeName: string;
+  desiredWeight: number;
+  scaledIngredients: ScaledIngredient[];
+  scaledStages?: ScaledStage[];
+  createdAt: string;
 }
 
 export const STORAGE_KEYS = {
