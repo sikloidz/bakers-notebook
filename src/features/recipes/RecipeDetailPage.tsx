@@ -7,6 +7,8 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useRecipes } from "./useRecipes";
 import { useIngredients } from "@/features/ingredients/useIngredients";
 import { RecipeTable } from "./RecipeTable";
+import { StageDetailCard } from "./StageDetailCard";
+import { FinalMixCard } from "./FinalMixCard";
 
 export function RecipeDetailPage() {
   const { id } = useParams();
@@ -27,6 +29,26 @@ export function RecipeDetailPage() {
       </div>
     );
   }
+
+  const hasStages = recipe.stages && recipe.stages.length > 0;
+
+  // Compute cumulative carry-in weights for each stage.
+  // carryIn[i] = total weight of all stage outputs before stage i.
+  const stageCarryIns: number[] = [];
+  if (hasStages) {
+    let cumulative = 0;
+    for (const stage of recipe.stages!) {
+      stageCarryIns.push(cumulative);
+      cumulative += stage.ingredients
+        .filter((si) => si.fromFormula)
+        .reduce((sum, si) => sum + si.weight, 0);
+    }
+    // cumulative now = total weight of all named stages → carry-in for Final Mix
+    stageCarryIns.push(cumulative);
+  }
+
+  const lastStageName =
+    hasStages ? recipe.stages![recipe.stages!.length - 1].name : "";
 
   return (
     <div>
@@ -58,10 +80,48 @@ export function RecipeDetailPage() {
         <p className="mb-4 text-sm text-brown-light">{recipe.description}</p>
       )}
 
-      <RecipeTable
-        recipeIngredients={recipe.ingredients}
-        allIngredients={ingredients}
-      />
+      <div className="space-y-6">
+        {/* Overall Formula */}
+        <div>
+          {hasStages && (
+            <h2 className="mb-2 font-serif text-base font-semibold text-brown">
+              Overall Formula
+            </h2>
+          )}
+          <RecipeTable
+            recipeIngredients={recipe.ingredients}
+            allIngredients={ingredients}
+          />
+        </div>
+
+        {/* Stage Breakdown */}
+        {hasStages && (
+          <div>
+            <h2 className="mb-3 font-serif text-base font-semibold text-brown">
+              Stage Breakdown
+            </h2>
+            <div className="space-y-4">
+              {recipe.stages!.map((stage, i) => (
+                <StageDetailCard
+                  key={stage.id}
+                  stage={stage}
+                  stageIndex={i}
+                  allIngredients={ingredients}
+                  formulaIngredients={recipe.ingredients}
+                  carryInWeight={stageCarryIns[i]}
+                />
+              ))}
+              <FinalMixCard
+                stages={recipe.stages!}
+                formulaIngredients={recipe.ingredients}
+                allIngredients={ingredients}
+                carryInWeight={stageCarryIns[recipe.stages!.length]}
+                lastStageName={lastStageName}
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
       <ConfirmDialog
         open={showDelete}

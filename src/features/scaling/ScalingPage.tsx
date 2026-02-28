@@ -9,7 +9,7 @@ import { useScalings } from "./useScalings";
 import { ScalingForm } from "./ScalingForm";
 import { ScalingResult } from "./ScalingResult";
 import { scaleRecipe, totalWeight } from "@/lib/baker-math";
-import type { ScaledIngredient } from "@/types";
+import type { ScaledIngredient, ScaledStage } from "@/types";
 
 export function ScalingPage() {
   const { id } = useParams();
@@ -21,6 +21,7 @@ export function ScalingPage() {
 
   const [desiredWeight, setDesiredWeight] = useState(0);
   const [result, setResult] = useState<ScaledIngredient[] | null>(null);
+  const [scaledStages, setScaledStages] = useState<ScaledStage[] | null>(null);
   const [saved, setSaved] = useState(false);
 
   if (!recipe) {
@@ -38,14 +39,45 @@ export function ScalingPage() {
 
   function handleScale() {
     if (!recipe || desiredWeight <= 0) return;
+
     const scaled = scaleRecipe(recipe.ingredients, desiredWeight, ingredients);
     setResult(scaled);
+
+    if (recipe.stages && recipe.stages.length > 0) {
+      const scaleFactor =
+        originalWeight > 0 ? desiredWeight / originalWeight : 1;
+      const ingredientMap = new Map(ingredients.map((i) => [i.id, i]));
+
+      const stages: ScaledStage[] = recipe.stages.map((stage) => ({
+        stageId: stage.id,
+        stageName: stage.name,
+        ingredients: stage.ingredients
+          .filter((si) => si.weight > 0)
+          .map((si) => ({
+            ingredientId: si.ingredientId,
+            ingredientName:
+              ingredientMap.get(si.ingredientId)?.name ?? "Unknown",
+            scaledWeight: Math.round(si.weight * scaleFactor),
+            fromFormula: si.fromFormula,
+          })),
+      }));
+      setScaledStages(stages);
+    } else {
+      setScaledStages(null);
+    }
+
     setSaved(false);
   }
 
   function handleSave() {
     if (!recipe || !result) return;
-    addScaling(recipe.id, recipe.name, desiredWeight, result);
+    addScaling(
+      recipe.id,
+      recipe.name,
+      desiredWeight,
+      result,
+      scaledStages ?? undefined
+    );
     setSaved(true);
   }
 
@@ -71,6 +103,7 @@ export function ScalingPage() {
         {result && (
           <ScalingResult
             scaledIngredients={result}
+            scaledStages={scaledStages ?? undefined}
             desiredWeight={desiredWeight}
             onSave={handleSave}
             saved={saved}

@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
 import { generateId } from "@/lib/id";
-import type { Scaling, ScaledIngredient } from "@/types";
+import type { Scaling, ScaledIngredient, ScaledStage } from "@/types";
 import { STORAGE_KEYS } from "@/types";
 
 export function useScalings() {
@@ -15,7 +15,8 @@ export function useScalings() {
       recipeId: string,
       recipeName: string,
       desiredWeight: number,
-      scaledIngredients: ScaledIngredient[]
+      scaledIngredients: ScaledIngredient[],
+      scaledStages?: ScaledStage[]
     ) => {
       const scaling: Scaling = {
         id: generateId(),
@@ -23,6 +24,8 @@ export function useScalings() {
         recipeName,
         desiredWeight,
         scaledIngredients,
+        scaledStages:
+          scaledStages && scaledStages.length > 0 ? scaledStages : undefined,
         createdAt: new Date().toISOString(),
       };
       setScalings((prev) => [scaling, ...prev]);
